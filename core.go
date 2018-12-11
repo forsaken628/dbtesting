@@ -201,7 +201,8 @@ type Row struct {
 
 type Result struct {
 	ResultType
-	data [][]interface{}
+	query *Query
+	data  [][]interface{}
 }
 
 func CompareResult(expect, actual *Result) (string, bool) {
@@ -215,7 +216,7 @@ func CompareResult(expect, actual *Result) (string, bool) {
 	}
 
 	for i, row := range expect.data {
-		diff, same := CompareRow(row, actual.data[i], expect.ResultType.colType)
+		diff, same := CompareRow(row, actual.data[i], expect.ResultType.colType, expect.query.comparators)
 		if !same {
 			return fmt.Sprintf("check result fail, row: %v\n%s", row, diff), false
 		}
@@ -223,8 +224,18 @@ func CompareResult(expect, actual *Result) (string, bool) {
 	return "", true
 }
 
-func CompareRow(expect, actual []interface{}, colType []*ColType) (string, bool) {
+func CompareRow(expect, actual []interface{}, colType []*ColType, m map[string]func(expect, actual interface{}) (string, bool)) (string, bool) {
 	for j, val := range expect {
+
+		fn, ok := m[colType[j].name]
+		if ok {
+			diff, same := fn(val, actual[j])
+			if !same {
+				return fmt.Sprintf("check row fail, col: %s, %s", colType[j].name, diff), false
+			}
+			continue
+		}
+
 		switch colType[j].scanType {
 		default:
 			if !(val == actual[j]) {
@@ -331,12 +342,13 @@ func Scan(r *sql.Rows) (*Result, error) {
 func Marshal(result *Result) ([]byte, error) {
 	// {cols:[],result:[[]]}
 
-	return json.Marshal(map[string]interface{}{
+	//return json.Marshal()
+	return json.MarshalIndent(map[string]interface{}{
 		"name":    result.name,
 		"isTable": result.isTable,
 		"cols":    result.colType,
 		"data":    result.data,
-	})
+	}, "", "  ")
 }
 
 func Unmarshal(data []byte) (*Result, error) {

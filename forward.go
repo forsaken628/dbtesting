@@ -56,33 +56,23 @@ func (t *TT) FetchResultFromTable(tabName string) (*Result, error) {
 }
 
 func (t *TT) NewSnapshotFromTables(name string, tables []string) (*Snapshot, error) {
-	s := Snapshot{
-		name:     name,
-		testName: t.testing.Name(),
-		results:  make([]*Result, len(tables)),
+	qs := make([]*Query, len(tables))
+	for i, tn := range tables {
+		qs[i] = NewQueryTable(tn)
 	}
 
-	for i, v := range tables {
-		rows, err := t.FetchResultFromTable(v)
-		if err != nil {
-			return nil, err
-		}
-
-		s.results[i] = rows
-	}
-
-	return &s, nil
+	return t.NewSnapshotFromQuery(name, qs)
 }
 
-func (t *TT) NewSnapshotFromQuery(name string, query []string) (*Snapshot, error) {
+func (t *TT) NewSnapshotFromQuery(name string, queries []*Query) (*Snapshot, error) {
 	s := &Snapshot{
 		name:     name,
 		testName: t.testing.Name(),
-		results:  make([]*Result, len(query)),
+		results:  make([]*Result, len(queries)),
 	}
 
-	for i, q := range query {
-		rows, err := t.db.Query(q)
+	for i, q := range queries {
+		rows, err := t.db.Query(q.query)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +82,9 @@ func (t *TT) NewSnapshotFromQuery(name string, query []string) (*Snapshot, error
 			return nil, err
 		}
 
-		s.results[i].name = fmt.Sprint("query", i)
+		s.results[i].name = q.name
+		s.results[i].isTable = q.isTable
+		s.results[i].query = q
 	}
 
 	return s, nil
@@ -167,7 +159,7 @@ func (t *TT) Initial(args *InitialArgs) bool {
 		return false
 
 	case ActiveRecord:
-		s, err := t.NewSnapshotFromTables("initial", args.Tables)
+		s, err := t.NewSnapshotFromTables(args.Name, args.Tables)
 		if err != nil {
 			t.testing.Error(err)
 			return true
@@ -181,7 +173,7 @@ func (t *TT) Initial(args *InitialArgs) bool {
 		return true
 
 	case ActiveApply:
-		err := t.ApplySnapshot("initial")
+		err := t.ApplySnapshot(args.Name)
 		if err != nil {
 			t.testing.Error(err)
 			return true
@@ -195,10 +187,33 @@ func (t *TT) Initial(args *InitialArgs) bool {
 	}
 }
 
+type Query struct {
+	name        string
+	isTable     bool
+	query       string
+	comparators map[string]func(expect, actual interface{}) (string, bool)
+}
+
+func (q *Query) RegisterComparator(col string, fn func(expect, actual interface{}) (string, bool)) {
+	q.comparators[col] = fn
+}
+
+func NewQuery(name, q string) *Query {
+	return &Query{name: name, query: q}
+}
+
+func NewQueryTable(name string) *Query {
+	return &Query{
+		name:    name,
+		isTable: true,
+		query:   fmt.Sprintf("select * from %s", name),
+	}
+}
+
 type CheckQueryArgs struct {
 	Active    active
 	Name      string
-	Queries   []string
+	Queries   []*Query
 	OverWrite bool
 }
 
@@ -234,6 +249,9 @@ func (t *TT) CheckQuery(args *CheckQueryArgs) bool {
 		if err != nil {
 			t.testing.Error(err)
 			return true
+		}
+		for i, v := range s0.results {
+			v.query = args.Queries[i]
 		}
 
 		s1, err := t.NewSnapshotFromQuery(args.Name, args.Queries)
