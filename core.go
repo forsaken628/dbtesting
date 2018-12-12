@@ -243,7 +243,7 @@ func CompareRow(expect, actual []interface{}, colType []*ColType, m map[string]f
 				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
 			}
 		case reflect.TypeOf(sql.RawBytes{}):
-			if bytes.Compare(val.([]byte), actual[j].([]byte)) != 0 {
+			if bytes.Compare(val.(sql.RawBytes), actual[j].(sql.RawBytes)) != 0 {
 				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
 			}
 		case reflect.TypeOf(time.Time{}):
