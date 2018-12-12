@@ -1,6 +1,7 @@
 package dbtesting
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -238,11 +239,17 @@ func CompareRow(expect, actual []interface{}, colType []*ColType, m map[string]f
 
 		switch colType[j].scanType {
 		default:
-			if !(val == actual[j]) {
+			if val != actual[j] {
 				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
 			}
-		case reflect.TypeOf(time.Time{}), reflect.TypeOf(sql.RawBytes{}):
-			panic("todo")
+		case reflect.TypeOf(sql.RawBytes{}):
+			if bytes.Compare(val.([]byte), actual[j].([]byte)) != 0 {
+				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
+			}
+		case reflect.TypeOf(time.Time{}):
+			if !val.(time.Time).Equal(actual[j].(time.Time)) {
+				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
+			}
 		}
 	}
 	return "", true
