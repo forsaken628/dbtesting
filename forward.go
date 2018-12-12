@@ -195,6 +195,10 @@ type Query struct {
 }
 
 func (q *Query) RegisterComparator(col string, fn func(expect, actual interface{}) (string, bool)) {
+	if q.comparators == nil {
+		q.comparators = map[string]func(expect, actual interface{}) (string, bool){col: fn}
+		return
+	}
 	q.comparators[col] = fn
 }
 
@@ -255,66 +259,6 @@ func (t *TT) CheckQuery(args *CheckQueryArgs) bool {
 		}
 
 		s1, err := t.NewSnapshotFromQuery(args.Name, args.Queries)
-		if err != nil {
-			t.testing.Error(err)
-			return true
-		}
-
-		diff, same := CompareSnapshot(s0, s1)
-		if !same {
-			t.testing.Error(diff)
-			return true
-		}
-		return false
-
-	default:
-		t.testing.Error(ErrInvalidActive)
-		return true
-	}
-}
-
-type CheckTableArgs struct {
-	Active    active
-	Name      string
-	Tables    []string
-	OverWrite bool
-}
-
-func (t *TT) CheckTable(args *CheckTableArgs) bool {
-	t.testing.Helper()
-	if args.Active != ActiveRecord && args.OverWrite {
-		t.testing.Error(ErrOverWriteOn)
-		return true
-	}
-
-	switch args.Active {
-
-	case ActiveSkip:
-		t.testing.Log("skip check")
-		return false
-
-	case ActiveRecord:
-		s, err := t.NewSnapshotFromTables(args.Name, args.Tables)
-		if err != nil {
-			t.testing.Error(err)
-			return true
-		}
-		err = s.Save(args.OverWrite)
-		if err != nil {
-			t.testing.Error(err)
-			return true
-		}
-		t.testing.Fatal(ErrRecordSuccess)
-		return true
-
-	case ActiveCheck:
-		s0, err := t.LoadSnapshot(args.Name)
-		if err != nil {
-			t.testing.Error(err)
-			return true
-		}
-
-		s1, err := t.NewSnapshotFromTables(args.Name, args.Tables)
 		if err != nil {
 			t.testing.Error(err)
 			return true

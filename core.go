@@ -76,17 +76,17 @@ type ColType struct {
 	scanType     reflect.Type
 }
 
-func CompareColType(expect, actual *ColType) bool {
+func CompareColType(expect, actual *ColType) (string, bool) {
 	if expect.name != actual.name {
-		return false
+		return fmt.Sprintf("expect col name %s actual %s", expect.name, actual.name), false
 	}
 	if expect.databaseType != actual.databaseType {
-		return false
+		return fmt.Sprintf("expect databaseType %s actual %s", expect.databaseType, actual.databaseType), false
 	}
 	if expect.scanType != actual.scanType {
-		return false
+		return fmt.Sprintf("expect scanType %s actual %s", expect.scanType, actual.scanType), false
 	}
-	return true
+	return "", true
 }
 
 func (c ColType) MarshalJSON() ([]byte, error) {
@@ -182,12 +182,12 @@ type ResultType struct {
 
 func CompareResultType(expect, actual *ResultType) (string, bool) {
 	if len(expect.colType) != len(actual.colType) {
-		return fmt.Sprintf("%s has %d columns,but %s has %d columns", expect.name, len(expect.colType), actual.name, len(actual.colType)), false
+		return fmt.Sprintf("check ResultType fail, %s has %d columns,but %s has %d columns", expect.name, len(expect.colType), actual.name, len(actual.colType)), false
 	}
 
 	for i, v := range expect.colType {
-		if !CompareColType(v, actual.colType[i]) {
-			return fmt.Sprintf("at index %d, %s different from %s", i, v.name, v.name), false
+		if cause, ok := CompareColType(v, actual.colType[i]); !ok {
+			return fmt.Sprintf("check ResultType fail, at index %d: %s", i, cause), false
 		}
 	}
 
