@@ -1,6 +1,8 @@
 package dbtesting
 
 import (
+	"bytes"
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -15,5 +17,19 @@ func TimeShouldAfter(expect, actual interface{}) (s string, b bool) {
 		return "actual time should after expect time", false
 	}
 
+	return "", true
+}
+
+func RawBytesEqual(expect, actual interface{}) (s string, b bool) {
+	if bytes.Compare(expect.(sql.RawBytes), actual.(sql.RawBytes)) != 0 {
+		return fmt.Sprintf("expect: %v, actual: %v", expect, actual), false
+	}
+	return "", true
+}
+
+func TimeEqual(expect, actual interface{}) (s string, b bool) {
+	if !expect.(time.Time).Equal(actual.(time.Time)) {
+		return fmt.Sprintf("expect: %v, actual: %v", expect, actual), false
+	}
 	return "", true
 }

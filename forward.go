@@ -7,6 +7,8 @@ import (
 	"github.com/forsaken628/bsql"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -65,26 +67,28 @@ func (t *TT) NewSnapshotFromTables(name string, tables []string) (*Snapshot, err
 }
 
 func (t *TT) NewSnapshotFromQuery(name string, queries []*Query) (*Snapshot, error) {
+	name = clearName(name)
+
 	s := &Snapshot{
 		name:     name,
 		testName: t.testing.Name(),
-		results:  make([]*Result, len(queries)),
+		results:  make(map[string]*Result, len(queries)),
 	}
 
-	for i, q := range queries {
+	for _, q := range queries {
 		rows, err := t.db.Query(q.query)
 		if err != nil {
 			return nil, err
 		}
 
-		s.results[i], err = Scan(rows)
+		s.results[q.name], err = Scan(rows)
 		if err != nil {
 			return nil, err
 		}
 
-		s.results[i].name = q.name
-		s.results[i].isTable = q.isTable
-		s.results[i].query = q
+		s.results[q.name].name = q.name
+		s.results[q.name].isTable = q.isTable
+		s.results[q.name].query = q
 	}
 
 	return s, nil
@@ -100,9 +104,12 @@ func (t *TT) ApplySnapshot(name string) error {
 }
 
 func (t *TT) LoadSnapshot(name string) (*Snapshot, error) {
+	name = clearName(name)
+
 	s := &Snapshot{
 		name:     name,
 		testName: t.testing.Name(),
+		results:  make(map[string]*Result),
 	}
 
 	f, err := os.Open(filepath.Join("testdata/snapshot", s.testName, name))
@@ -123,7 +130,7 @@ func (t *TT) LoadSnapshot(name string) (*Snapshot, error) {
 				return nil, err
 			}
 
-			s.results = append(s.results, rows)
+			s.results[name] = rows
 		}
 	}
 
@@ -151,6 +158,7 @@ func (t *TT) Initial(args *InitialArgs) bool {
 	if args.Name == "" {
 		args.Name = "initial"
 	}
+	args.Name = clearName(args.Name)
 
 	switch args.Active {
 
@@ -191,12 +199,12 @@ type Query struct {
 	name        string
 	isTable     bool
 	query       string
-	comparators map[string]func(expect, actual interface{}) (string, bool)
+	comparators map[string]Comparator
 }
 
-func (q *Query) RegisterComparator(col string, fn func(expect, actual interface{}) (string, bool)) {
+func (q *Query) RegisterComparator(col string, fn Comparator) {
 	if q.comparators == nil {
-		q.comparators = map[string]func(expect, actual interface{}) (string, bool){col: fn}
+		q.comparators = map[string]Comparator{col: fn}
 		return
 	}
 	q.comparators[col] = fn
@@ -228,6 +236,8 @@ func (t *TT) CheckQuery(args *CheckQueryArgs) bool {
 		return true
 	}
 
+	args.Name = clearName(args.Name)
+
 	switch args.Active {
 
 	case ActiveSkip:
@@ -254,8 +264,9 @@ func (t *TT) CheckQuery(args *CheckQueryArgs) bool {
 			t.testing.Error(err)
 			return true
 		}
-		for i, v := range s0.results {
-			v.query = args.Queries[i]
+
+		for _, q := range args.Queries {
+			s0.results[q.name].query = q
 		}
 
 		s1, err := t.NewSnapshotFromQuery(args.Name, args.Queries)
@@ -275,4 +286,13 @@ func (t *TT) CheckQuery(args *CheckQueryArgs) bool {
 		t.testing.Error(ErrInvalidActive)
 		return true
 	}
+}
+
+var nameReg = regexp.MustCompile(`^[\w_-]+$`)
+
+func clearName(name string) string {
+	if nameReg.MatchString(name) {
+		return strings.ToLower(name)
+	}
+	panic("invalid name")
 }

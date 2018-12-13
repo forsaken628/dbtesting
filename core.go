@@ -1,7 +1,6 @@
 package dbtesting
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -225,31 +224,36 @@ func CompareResult(expect, actual *Result) (string, bool) {
 	return "", true
 }
 
-func CompareRow(expect, actual []interface{}, colType []*ColType, m map[string]func(expect, actual interface{}) (string, bool)) (string, bool) {
+type Comparator func(expect, actual interface{}) (cause string, same bool)
+
+var typeComparators = map[reflect.Type]Comparator{
+	reflect.TypeOf(sql.RawBytes{}): RawBytesEqual,
+	reflect.TypeOf(time.Time{}):    TimeEqual,
+}
+
+func CompareRow(expect, actual []interface{}, colType []*ColType, nameComparators map[string]Comparator) (string, bool) {
 	for j, val := range expect {
 
-		fn, ok := m[colType[j].name]
+		fn, ok := nameComparators[colType[j].name]
 		if ok {
-			diff, same := fn(val, actual[j])
+			cause, same := fn(val, actual[j])
 			if !same {
-				return fmt.Sprintf("check row fail, col: %s, %s", colType[j].name, diff), false
+				return fmt.Sprintf("check row fail, col: %s, %s", colType[j].name, cause), false
 			}
 			continue
 		}
 
-		switch colType[j].scanType {
-		default:
-			if val != actual[j] {
-				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
+		fn, ok = typeComparators[colType[j].scanType]
+		if ok {
+			cause, same := fn(val, actual[j])
+			if !same {
+				return fmt.Sprintf("check row fail, col: %s, %s", colType[j].name, cause), false
 			}
-		case reflect.TypeOf(sql.RawBytes{}):
-			if bytes.Compare(val.(sql.RawBytes), actual[j].(sql.RawBytes)) != 0 {
-				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
-			}
-		case reflect.TypeOf(time.Time{}):
-			if !val.(time.Time).Equal(actual[j].(time.Time)) {
-				return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
-			}
+			continue
+		}
+
+		if val != actual[j] {
+			return fmt.Sprintf("check row fail, col: %s, expect: %v, actual: %v", colType[j].name, val, actual[j]), false
 		}
 	}
 	return "", true
@@ -412,7 +416,7 @@ func Load(path string) (*Result, error) {
 type Snapshot struct {
 	name     string
 	testName string
-	results  []*Result
+	results  map[string]*Result
 }
 
 func (s *Snapshot) Save(overWrite bool) error {
