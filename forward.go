@@ -130,7 +130,7 @@ func (t *TT) LoadSnapshot(name string) (*Snapshot, error) {
 				return nil, err
 			}
 
-			s.results[name] = rows
+			s.results[v.Name()] = rows
 		}
 	}
 
